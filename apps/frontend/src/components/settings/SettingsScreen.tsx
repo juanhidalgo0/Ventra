@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import TicketPrinterCard from './TicketPrinterCard';
 import FontSizeCard from './FontSizeCard';
+import CursorSizeCard from './CursorSizeCard';
 import TicketLookCard from './TicketLookCard';
 import { useAutoTour } from '../common/tour/GuidedTour';
 import { buildSetupSteps, setupPercent as calcSetupPercent, posnetsSaved, useSetupStore } from '../../utils/setupProgress';
@@ -1100,7 +1101,7 @@ export default function SettingsScreen({ initialTab, embedded = false }: { initi
                   />
                 </SettingsCard>
               )}
-              {tab === 'equipo' && <FontSizeCard />}
+              {tab === 'equipo' && <><FontSizeCard /><CursorSizeCard /></>}
 
               {/* ══ Plan y nube ══ */}
               {tab === 'suscripcion' && isAdmin && (

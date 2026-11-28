@@ -54,6 +54,8 @@ export function registerTourActions(actions: Record<string, () => void>) {
 }
 export const runTourAction = (name: string) => { try { tourActions.get(name)?.(); } catch (e) { console.warn('[Recorrido]', name, e); } };
 export const hasTourAction = (name: string) => tourActions.has(name);
+/** Avisa que el usuario hizo algo que un paso "Probalo" espera (TourStep.waitFor). */
+export const tourAction = (name: string) => window.dispatchEvent(new CustomEvent('ventra-tour-action', { detail: name }));
 
 export const useTourStore = create<TourState>((set, get) => ({
   activeTour: null,

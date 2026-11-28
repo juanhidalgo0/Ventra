@@ -1,0 +1,159 @@
+/* Generado por tools/cursores/generar.cjs: no editar a mano, cambiar el script y volver a correrlo.
+   Cursores de Ventra en toda la app (PC y caja web). Se carga después de index.css para ganarle a
+   las clases cursor-* de Tailwind. "cursor-grande" (Configuración > Equipo) usa los de 48 px y
+   "cursor-oculto" esconde el mouse mientras se escanea o se tipea en la caja. */
+html,
+body {
+  cursor: url('./assets/cursors/flecha.svg') 4 2, default;
+}
+a[href],
+button:not(:disabled),
+[role='button'],
+[role='tab'],
+[role='menuitem'],
+[role='option'],
+[role='switch'],
+[role='checkbox'],
+label[for],
+summary,
+select:not(:disabled),
+input[type='checkbox']:not(:disabled),
+input[type='radio']:not(:disabled),
+input[type='button']:not(:disabled),
+input[type='submit']:not(:disabled),
+input[type='file'],
+.cursor-pointer,
+.nav-btn {
+  cursor: url('./assets/cursors/mano.svg') 13 3, pointer;
+}
+.cursor-default {
+  cursor: url('./assets/cursors/flecha.svg') 4 2, default;
+}
+.cursor-grab,
+[draggable='true'] {
+  cursor: url('./assets/cursors/mano-abierta.svg') 16 14, grab;
+}
+.cursor-grabbing,
+.cursor-grab:active,
+.active\:cursor-grabbing:active,
+[draggable='true']:active {
+  cursor: url('./assets/cursors/mano-cerrada.svg') 16 16, grabbing;
+}
+.cursor-zoom-in {
+  cursor: url('./assets/cursors/lupa.svg') 13 13, zoom-in;
+}
+.cursor-col-resize,
+.cursor-ew-resize,
+.cursor-e-resize,
+.cursor-w-resize {
+  cursor: url('./assets/cursors/ancho.svg') 16 16, ew-resize;
+}
+.cursor-row-resize,
+.cursor-ns-resize,
+.cursor-n-resize,
+.cursor-s-resize {
+  cursor: url('./assets/cursors/alto.svg') 16 16, ns-resize;
+}
+.cursor-wait,
+.cursor-progress,
+[aria-busy='true'] {
+  cursor: url('./assets/cursors/espera.svg') 4 2, wait;
+}
+input:not([type='checkbox']):not([type='radio']):not([type='button']):not([type='submit']):not([type='range']):not([type='color']):not([type='file']):not(:disabled),
+textarea:not(:disabled),
+[contenteditable='true'] {
+  cursor: url('./assets/cursors/texto.svg') 16 16, text;
+}
+input:disabled,
+textarea:disabled,
+button:disabled,
+select:disabled,
+.cursor-not-allowed,
+[aria-disabled='true'] {
+  cursor: url('./assets/cursors/prohibido.svg') 4 2, not-allowed;
+}
+
+html.cursor-grande,
+html.cursor-grande body {
+  cursor: url('./assets/cursors/flecha-grande.svg') 6 3, default;
+}
+html.cursor-grande a[href],
+html.cursor-grande button:not(:disabled),
+html.cursor-grande [role='button'],
+html.cursor-grande [role='tab'],
+html.cursor-grande [role='menuitem'],
+html.cursor-grande [role='option'],
+html.cursor-grande [role='switch'],
+html.cursor-grande [role='checkbox'],
+html.cursor-grande label[for],
+html.cursor-grande summary,
+html.cursor-grande select:not(:disabled),
+html.cursor-grande input[type='checkbox']:not(:disabled),
+html.cursor-grande input[type='radio']:not(:disabled),
+html.cursor-grande input[type='button']:not(:disabled),
+html.cursor-grande input[type='submit']:not(:disabled),
+html.cursor-grande input[type='file'],
+html.cursor-grande .cursor-pointer,
+html.cursor-grande .nav-btn {
+  cursor: url('./assets/cursors/mano-grande.svg') 20 5, pointer;
+}
+html.cursor-grande .cursor-default {
+  cursor: url('./assets/cursors/flecha-grande.svg') 6 3, default;
+}
+html.cursor-grande .cursor-grab,
+html.cursor-grande [draggable='true'] {
+  cursor: url('./assets/cursors/mano-abierta-grande.svg') 24 21, grab;
+}
+html.cursor-grande .cursor-grabbing,
+html.cursor-grande .cursor-grab:active,
+html.cursor-grande .active\:cursor-grabbing:active,
+html.cursor-grande [draggable='true']:active {
+  cursor: url('./assets/cursors/mano-cerrada-grande.svg') 24 24, grabbing;
+}
+html.cursor-grande .cursor-zoom-in {
+  cursor: url('./assets/cursors/lupa-grande.svg') 20 20, zoom-in;
+}
+html.cursor-grande .cursor-col-resize,
+html.cursor-grande .cursor-ew-resize,
+html.cursor-grande .cursor-e-resize,
+html.cursor-grande .cursor-w-resize {
+  cursor: url('./assets/cursors/ancho-grande.svg') 24 24, ew-resize;
+}
+html.cursor-grande .cursor-row-resize,
+html.cursor-grande .cursor-ns-resize,
+html.cursor-grande .cursor-n-resize,
+html.cursor-grande .cursor-s-resize {
+  cursor: url('./assets/cursors/alto-grande.svg') 24 24, ns-resize;
+}
+html.cursor-grande .cursor-wait,
+html.cursor-grande .cursor-progress,
+html.cursor-grande [aria-busy='true'] {
+  cursor: url('./assets/cursors/espera-grande.svg') 6 3, wait;
+}
+html.cursor-grande input:not([type='checkbox']):not([type='radio']):not([type='button']):not([type='submit']):not([type='range']):not([type='color']):not([type='file']):not(:disabled),
+html.cursor-grande textarea:not(:disabled),
+html.cursor-grande [contenteditable='true'] {
+  cursor: url('./assets/cursors/texto-grande.svg') 24 24, text;
+}
+html.cursor-grande input:disabled,
+html.cursor-grande textarea:disabled,
+html.cursor-grande button:disabled,
+html.cursor-grande select:disabled,
+html.cursor-grande .cursor-not-allowed,
+html.cursor-grande [aria-disabled='true'] {
+  cursor: url('./assets/cursors/prohibido-grande.svg') 6 3, not-allowed;
+}
+
+html.pos-dragging,
+html.pos-dragging * {
+  cursor: url('./assets/cursors/mano-cerrada.svg') 16 16, grabbing !important;
+}
+html.cursor-grande.pos-dragging,
+html.cursor-grande.pos-dragging * {
+  cursor: url('./assets/cursors/mano-cerrada-grande.svg') 24 24, grabbing !important;
+}
+
+html.cursor-oculto,
+html.cursor-oculto * {
+  cursor: none !important;
+}

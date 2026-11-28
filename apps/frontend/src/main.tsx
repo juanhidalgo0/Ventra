@@ -17,6 +17,8 @@ import App from './App';
 import { installErrorReport } from './services/errorReport';
 import './fonts';
 import './index.css';
+import './cursores.css'; // después de index.css: les gana a las clases cursor-* de Tailwind
+import './utils/cursorSize';
 
 // Chrome manda teclas "falsas" (sin key ni code) cuando autocompleta un campo: se frenan acá,
 // antes que cualquier otro oyente, para que nadie lea e.key.length sobre undefined.

@@ -19,6 +19,9 @@ export interface TourStep {
   /** Pantalla del paso (recorridos de varias pantallas): el recorrido navega ahí al entrar.
    *  Si su objetivo no aparece en unos segundos (sin datos, otro plan), el paso se saltea. */
   path?: string;
+  /** Paso "Probalo": la guía espera que el usuario haga la acción (aviso 'ventra-tour-action' con
+   *  este nombre, ver tourAction en tourStore) y sigue sola. Mientras, la pantalla se puede usar. */
+  waitFor?: string;
 }
 
 /** Recorridos de la caja que se hacen en modo práctica: caja abierta y productos de ejemplo (ver pos/posPractice.ts) */
@@ -69,6 +72,7 @@ export const TOURS = {
       : c.biz.variants
         ? 'Estos son productos de ejemplo. Las prendas te preguntan **talle y color** al tocarlas; el resto se **suma al ticket** directo.'
         : 'Estos son productos de ejemplo: cada uno que tocás se **suma al ticket**. Filtrá por categoría para encontrarlo más rápido.' },
+    { target: 'pos-area', waitFor: 'dragToCart', title: 'Probalo: arrastrá al ticket', body: 'También podés **agarrar un producto y soltarlo en el ticket**. Probalo ahora: arrastrá cualquiera hasta la derecha.' },
     RUBRO_POS[c.profile],
     c.biz.expiry && c.profile !== 'GASTRONOMIA' && { title: 'Vencimientos', body: 'Si cargás la **fecha de vencimiento** de cada lote, Ventra te avisa **antes de que se venza** para que lo vendas primero.' },
     { target: 'pos-cart', run: 'pos:addSample', title: 'Ticket en curso', body: c.profile === 'CARNICERIA' || c.profile === 'FIAMBRERIA' || c.profile === 'VERDULERIA'
@@ -76,6 +80,7 @@ export const TOURS = {
       : c.biz.fractional
       ? 'Sumamos productos al ticket. Lo que va **por metro o kilo** acepta decimales: cambiá la **cantidad** o quitá ítems antes de cobrar.'
       : 'Sumamos unos productos al ticket. Acá cambiás **cantidades** o quitás ítems antes de cobrar.' },
+    { target: 'pos-cart', waitFor: 'qtyWheel', title: 'Probalo: la rueda del mouse', body: 'Poné el mouse sobre la **cantidad** de un producto y **girá la rueda**: para arriba suma, para abajo resta. Para sacar un producto, **arrastralo afuera del ticket**.' },
     c.profile === 'GASTRONOMIA' && { target: 'pos-pedido', run: 'pos:sampleOrder', title: 'Mesa, para llevar o delivery', body: 'Antes de cobrar elegí **cómo es el pedido**: la mesa (acá, la **4**), para llevar o delivery con la dirección. Sale **bien grande en el ticket**.' },
     { target: 'pos-confirm', run: 'pos:closePayment', title: 'Cobrar', body: 'Cobrás con este botón o con **Enter** con el buscador vacío. Abrimos la ventana de cobro…' },
     { target: 'pay-total', lazy: true, run: 'pos:openPayment', title: 'Total a cobrar', body: 'El **importe final** con descuentos y recargos aplicados. Si el medio de pago tiene recargo, se suma acá.' },

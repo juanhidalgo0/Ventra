@@ -1,4 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useTransition, useMemo } from 'react';
+import { startProductDrag } from './dragToCart';
+import { HeaderIcon, IconCaja, IconCuentas, IconHistorial, IconGastos, IconProveedores, IconLista, IconPedidos, IconPresupuesto, IconAcopio } from './HeaderIcons';
+import { bumpNumber, startCartRowDrag, cashInFx, markLearned, initLearned } from './cartFx';
 import OnlineOrdersScreen from '../orders/OnlineOrdersScreen';
 import GoOrdersModal from '../go/GoOrdersModal';
 import { useGoOpenOrders } from '../go/goOrders';
@@ -57,7 +60,7 @@ import SubstitutesModal from './SubstitutesModal';
 import { toggleFullscreen } from '../../utils/fullscreen';
 import { usePosPractice, inPractice, practiceTicket, PRACTICE_SESSION_ID } from './posPractice';
 import { setTrailContext, markTotalShown, trailRemoveLine, trailSetQuantity, trailClearCart, trailDeleteHeldCart } from '../../services/posTrail';
-import { registerTourActions, useTourStore } from '../common/tour/tourStore';
+import { registerTourActions, useTourStore, tourAction } from '../common/tour/tourStore';
 import { useBusinessStore } from '../../stores/businessStore';
 import { OrderTypeBar, foodEmoji, ItemComanda } from './gastro';
 import { canPrintSilently, printSilently, printFailMessage } from '../../utils/ticketPrinter';
@@ -378,6 +381,9 @@ export default function POSScreen() {
     return (localStorage.getItem('pos_product_view_mode') as 'grid' | 'list') || 'grid';
   });
   const [selectedProductIndex, setSelectedProductIndex] = useState<number>(-1);
+  // Lo que había en el buscador cuando se eligió un producto con las flechas. Si después se
+  // escribe o se escanea algo, el Enter busca ese código y no agrega el producto elegido.
+  const selectionQueryRef = useRef<string | null>(null);
   const [isCartBusy, setIsCartBusy] = useState(false);
   const [showQuickBar, setShowQuickBar] = useState(() => {
     return localStorage.getItem('pos_show_quick_bar') !== 'false';
@@ -399,6 +405,7 @@ export default function POSScreen() {
 
   useEffect(() => {
     setSelectedProductIndex(-1);
+    selectionQueryRef.current = null;
   }, [searchQuery, selectedCategory, showPromosOnly]);
 
   useEffect(() => {
@@ -994,7 +1001,9 @@ export default function POSScreen() {
         }
       }
 
-      if (e.key === 'Escape') { 
+      if (e.key === 'Escape') {
+        setSelectedProductIndex(-1);
+        selectionQueryRef.current = null;
         setQtyPromptProduct(null);
         setShowQuickSale(false);
         setShowPayment(false); 
@@ -1589,6 +1598,16 @@ export default function POSScreen() {
   const handleBarcodeSearch = async (e: React.KeyboardEvent) => {
     const comboCount = getVisibleCombos().length;
     const totalNavigable = comboCount + displayedProducts.length;
+    const currentText = (searchRef.current?.value ?? searchQuery).toUpperCase();
+    if (['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp'].includes(e.key)) {
+      selectionQueryRef.current = currentText;
+    }
+    // Se escribió o escaneó algo después de elegir con las flechas: la selección ya no vale
+    const selectionStale = selectionQueryRef.current === null || selectionQueryRef.current !== currentText;
+    if (e.key === 'Enter' && selectedProductIndex >= 0 && selectionStale) {
+      setSelectedProductIndex(-1);
+      selectionQueryRef.current = null;
+    }
 
     if (e.key === 'ArrowRight') {
       e.preventDefault();
@@ -1640,15 +1659,16 @@ export default function POSScreen() {
     }
     if (e.key === 'Escape') {
       setSelectedProductIndex(-1);
+      selectionQueryRef.current = null;
       return;
     }
-    if (e.key === 'Enter' && selectedProductIndex >= 0 && selectedProductIndex < comboCount) {
+    if (e.key === 'Enter' && !selectionStale && selectedProductIndex >= 0 && selectedProductIndex < comboCount) {
       e.preventDefault();
       handleAddPromoToCart(getVisibleCombos()[selectedProductIndex]);
       setSelectedProductIndex(-1);
       return;
     }
-    if (e.key === 'Enter' && selectedProductIndex >= comboCount && selectedProductIndex < totalNavigable) {
+    if (e.key === 'Enter' && !selectionStale && selectedProductIndex >= comboCount && selectedProductIndex < totalNavigable) {
       e.preventDefault();
       const product = displayedProducts[selectedProductIndex - comboCount];
       let multiplier = 1;
@@ -1827,6 +1847,30 @@ export default function POSScreen() {
   const processCodeRef = useRef(processCode);
   processCodeRef.current = processCode;
 
+  // Mientras se escanea o se tipea, el mouse se esconde (si quedó arriba de un producto no tapa
+  // nada ni lo marca); vuelve apenas se mueve. Solo en la caja.
+  useEffect(() => {
+    const root = document.documentElement;
+    const hide = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt') return;
+      root.classList.add('cursor-oculto');
+    };
+    const show = (e: MouseEvent) => {
+      if (e.movementX === 0 && e.movementY === 0) return; // Chrome a veces avisa sin que se mueva
+      root.classList.remove('cursor-oculto');
+    };
+    const showNow = () => root.classList.remove('cursor-oculto');
+    window.addEventListener('keydown', hide, true);
+    window.addEventListener('mousemove', show, true);
+    window.addEventListener('mousedown', showNow, true);
+    return () => {
+      window.removeEventListener('keydown', hide, true);
+      window.removeEventListener('mousemove', show, true);
+      window.removeEventListener('mousedown', showNow, true);
+      showNow();
+    };
+  }, []);
+
   // Lector de códigos con el buscador enfocado: el lector "escribe" 13 dígitos en pocos ms y
   // cada uno redibujaba toda la caja (en una PC lenta, más de un segundo por código). La primera
   // tecla entra normal; las que llegan pegadas se juntan sin tocar la pantalla y, con el Enter
@@ -1882,6 +1926,42 @@ export default function POSScreen() {
     return () => { window.removeEventListener('keydown', onKey, true); clearTimeout(flushTimer); };
   }, []);
 
+  // Rueda del mouse sobre la cantidad de una fila del ticket: sube o baja de a uno (o de a 100 g,
+  // o de a bulto). Bajando no llega a cero: para sacar la fila está la cruz o arrastrarla afuera.
+  const qtyWheelRef = useRef<(key: string, dir: 1 | -1) => void>(() => {});
+  qtyWheelRef.current = (key, dir) => {
+    const item = usePOSStore.getState().cart.find((i) => i.cartKey === key);
+    if (!item || item.isReturn) return;
+    const step = isKgLine(item) ? 0.1 : (item.packSize || 1);
+    const next = Math.round((item.quantity + dir * step) * 1000) / 1000;
+    if (dir < 0) {
+      if (next < step - 1e-9) return;
+      trailSetQuantity(key, next);
+    } else {
+      updateQuantity(key, next);
+    }
+  };
+  useEffect(() => {
+    let acc = 0;
+    const onWheel = (e: WheelEvent) => {
+      // Sirve con el mouse en cualquier parte del renglón, no solo sobre los botones − y +
+      const box = (e.target as Element | null)?.closest?.('[data-qty-row]') as HTMLElement | null;
+      if (!box) return;
+      e.preventDefault(); // que no se mueva la lista del ticket mientras tanto
+      acc += e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY; // touchpads mandan pasitos chicos
+      if (Math.abs(acc) < 40) return;
+      const dir: 1 | -1 = acc < 0 ? 1 : -1;
+      acc = 0;
+      qtyWheelRef.current(box.dataset.qtyRow!, dir);
+      bumpNumber(box.querySelector('[data-qty-num]'), dir);
+      markLearned('rueda');
+      tourAction('qtyWheel');
+    };
+    initLearned();
+    window.addEventListener('wheel', onWheel, { passive: false });
+    return () => window.removeEventListener('wheel', onWheel);
+  }, []);
+
   const handleAddPromoToCart = (promo: any) => {
     if (promo.type === 'FIXED_COMBO' && promo.products && promo.products.length > 0) {
       // Group products by groupId
@@ -1922,12 +2002,13 @@ export default function POSScreen() {
   };
 
   // Stock legible de un vistazo: punto de color + texto ("Sin stock", "Quedan 3")
+  // El stock se muestra solo cuando importa: "Sin stock" en 0 y "Quedan N" de 1 a 5. Con stock de
+  // sobra no hace falta, y en negativo tampoco: muchos comercios no controlan stock y van quedando en negativo.
   const formatStockBadge = (stock: number, unlimitedStock?: boolean, pieceSize?: number, unit?: string) => {
-    const neutral = 'text-slate-600 dark:text-slate-300';
-    if (unlimitedStock) {
-      return { text: 'Stock ∞', dot: 'bg-slate-400', tone: neutral };
-    }
+    if (unlimitedStock) return null;
     const num = Number(stock) || 0;
+    if (num === 0) return { text: 'Sin stock', dot: 'bg-red-500', tone: 'text-red-600 dark:text-red-400' };
+    if (num < 0 || num > 5) return null;
     let formatted: string;
     // Ferretería: si el producto se vende por pieza madre (rollo/barra), mostrar
     // "N piezas + sobrante" en vez del número crudo, para saber cuándo abrir una nueva.
@@ -1946,11 +2027,7 @@ export default function POSScreen() {
       formatted = Math.round(num).toLocaleString('es-AR');
     }
 
-    const danger = 'text-red-600 dark:text-red-400';
-    if (num === 0) return { text: 'Sin stock', dot: 'bg-red-500', tone: danger };
-    if (num < 0) return { text: `Stock ${formatted}`, dot: 'bg-red-500', tone: danger };
-    if (num <= 5) return { text: `Quedan ${formatted}`, dot: 'bg-amber-500', tone: 'text-amber-700 dark:text-amber-400' };
-    return { text: `Stock ${formatted}`, dot: 'bg-emerald-500', tone: neutral };
+    return { text: `Quedan ${formatted}`, dot: 'bg-amber-500', tone: 'text-amber-700 dark:text-amber-400' };
   };
 
   const cleanSearchQuery = searchQuery.trim().toLowerCase();
@@ -2048,10 +2125,10 @@ export default function POSScreen() {
     ro.observe(el);
     return () => ro.disconnect();
   }, [headerActionsEl]);
-  const hdrBtn = 'flex-auto group relative hidden md:flex shrink-0 min-w-10 items-center justify-center gap-1.5 h-10 px-3 rounded-xl font-semibold text-[13px] tracking-[-0.01em] transition-all active:scale-95 shadow-sm whitespace-nowrap border border-transparent text-white cursor-pointer';
+  const hdrBtn = 'flex-auto group relative hidden md:flex shrink-0 min-w-10 items-center justify-center gap-1.5 h-10 px-3 rounded-xl font-semibold text-[13px] tracking-[-0.01em] transition-all active:scale-95 hover:-translate-y-px shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_1px_2px_rgba(15,23,42,0.18)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_5px_12px_-5px_rgba(15,23,42,0.45)] whitespace-nowrap border border-transparent text-white cursor-pointer';
   // El tooltip no ocupa lugar hasta el hover, así no altera la medición
   const hdrTip = 'hidden md:group-hover:block pointer-events-none absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[11px] font-semibold px-2 py-1 rounded-md shadow-lg z-50 whitespace-nowrap';
-  const hdrKey = 'inline-flex opacity-0 group-hover:opacity-100 transition-opacity items-center text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded ml-1 leading-none border';
+  const hdrKey = 'inline-flex items-center text-[10px] font-bold px-1.5 py-[3px] rounded-md ml-0.5 leading-none';
   const hdrLabel = (full: string, short: string) => (headerMode === 2 ? null : <span>{headerMode === 0 ? full : short}</span>);
 
   return (
@@ -2115,14 +2192,14 @@ export default function POSScreen() {
                 : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300'
             }`}
           >
-            <Vault strokeWidth={2.25} className={`w-4 h-4 shrink-0 ${currentSession ? 'text-white' : 'text-amber-600'}`} />
+            <HeaderIcon tone={currentSession ? 'bg-white/15' : 'bg-amber-200/70'}><IconCaja className={`w-[17px] h-[17px] ${currentSession ? 'text-white' : 'text-amber-700'}`} /></HeaderIcon>
             <span className="flex items-center gap-1.5">
               {/* En móvil el rótulo vuelve: es el único botón visible y "Abrir Caja" es la acción a leer */}
               <span className={headerMode === 2 ? 'inline md:hidden' : 'inline'}>{currentSession ? 'Caja' : 'Abrir Caja'}</span>
               {currentSession && <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 ring-2 ring-emerald-400/40" />}
             </span>
             {headerMode === 2 && <span className={hdrTip}>{currentSession ? 'Caja abierta [F8]' : 'Abrir caja [F8]'}</span>}
-            {headerMode === 0 && <span className={`hidden md:inline-flex ${hdrKey} ${currentSession ? 'bg-white/20 text-white border-white/25' : 'bg-amber-100 text-amber-800 border-amber-300'}`}>F8</span>}
+            {headerMode === 0 && <span className={`hidden md:inline-flex ${hdrKey} ${currentSession ? 'bg-black/25 text-white/90' : 'bg-amber-200/70 text-amber-900'}`}>F8</span>}
           </button>
 
           {/* Mobile hamburger menu trigger */}
@@ -2135,40 +2212,40 @@ export default function POSScreen() {
 
           {/* Cuentas Corrientes */}
           <button data-tour="pos-ctacte" onClick={() => { if (currentSession) setShowCobroCtaCte(true); else toast.error('No hay caja abierta'); }} className={`${hdrBtn} bg-indigo-600 hover:bg-indigo-700`}>
-            <HandCoins strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
+            <HeaderIcon><IconCuentas /></HeaderIcon>
             {hdrLabel('Cuentas Corrientes', 'Ctas. Ctes.')}
             {headerMode !== 0 && <span className={hdrTip}>Cuentas Corrientes [F5]</span>}
-            {headerMode === 0 && <span className={`${hdrKey} bg-white/20 text-white border-white/25`}>F5</span>}
+            {headerMode === 0 && <span className={`${hdrKey} bg-black/25 text-white/90`}>F5</span>}
           </button>
 
           {/* Historial */}
           <button data-tour="pos-historial" onClick={() => setShowHistorial(true)} className={`${hdrBtn} bg-violet-600 hover:bg-violet-700`}>
-            <ReceiptText strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
+            <HeaderIcon><IconHistorial /></HeaderIcon>
             {hdrLabel('Historial', 'Historial')}
             {headerMode !== 0 && <span className={hdrTip}>Historial [F6]</span>}
-            {headerMode === 0 && <span className={`${hdrKey} bg-white/20 text-white border-white/25`}>F6</span>}
+            {headerMode === 0 && <span className={`${hdrKey} bg-black/25 text-white/90`}>F6</span>}
           </button>
 
           {/* Gastos */}
           <button data-tour="pos-gastos" onClick={() => { if (currentSession) setShowGastos(true); else toast.error('No hay caja abierta'); }} className={`${hdrBtn} bg-emerald-700 hover:bg-emerald-800`}>
-            <TrendingDown strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
+            <HeaderIcon><IconGastos /></HeaderIcon>
             {hdrLabel('Gastos', 'Gastos')}
             {headerMode !== 0 && <span className={hdrTip}>Gastos [F7]</span>}
-            {headerMode === 0 && <span className={`${hdrKey} bg-white/20 text-white border-white/25`}>F7</span>}
+            {headerMode === 0 && <span className={`${hdrKey} bg-black/25 text-white/90`}>F7</span>}
           </button>
 
           {/* Proveedores */}
           <button data-tour="pos-proveedores" onClick={() => setShowProveedores(true)} className={`${hdrBtn} bg-blue-600 hover:bg-blue-700`}>
-            <Truck strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
+            <HeaderIcon><IconProveedores /></HeaderIcon>
             {hdrLabel('Proveedores', 'Proveedores')}
             {headerMode !== 0 && <span className={hdrTip}>Proveedores [F9]</span>}
-            {headerMode === 0 && <span className={`${hdrKey} bg-white/20 text-white border-white/25`}>F9</span>}
+            {headerMode === 0 && <span className={`${hdrKey} bg-black/25 text-white/90`}>F9</span>}
           </button>
 
           {/* Distribuidora: los pedidos que toman los vendedores */}
                     {usesPreorders && workRole !== 'CHOFER' && (
             <button onClick={() => navigate('/preventa')} className={`${hdrBtn} bg-sky-600 hover:bg-sky-700`}>
-              <ClipboardList strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
+              <HeaderIcon><IconLista /></HeaderIcon>
               {hdrLabel('Preventa', 'Preventa')}
               {headerMode !== 0 && <span className={hdrTip}>Pedidos de preventa</span>}
             </button>
@@ -2177,7 +2254,7 @@ export default function POSScreen() {
           {/* Encargos en la caja: se prende o se apaga en Configuración → Rubros y funciones */}
           {usesClientOrders && (
             <button onClick={() => setShowClientOrders(true)} className={`${hdrBtn} bg-orange-600 hover:bg-orange-700`}>
-              <ClipboardList strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
+              <HeaderIcon><IconLista /></HeaderIcon>
               {hdrLabel('Encargos', 'Encargos')}
               {headerMode !== 0 && <span className={hdrTip}>Encargos de clientes</span>}
             </button>
@@ -2186,7 +2263,7 @@ export default function POSScreen() {
           {/* Pedidos online: solo si el comercio tiene la tienda online publicada */}
           {ordersVisible && (
             <button onClick={() => setShowOnlineOrders(true)} className={`${hdrBtn} bg-rose-600 hover:bg-rose-700`}>
-              <ShoppingCart strokeWidth={2.25} className="w-4 h-4 text-white shrink-0" />
+              <HeaderIcon><IconPedidos /></HeaderIcon>
               {hdrLabel('Pedidos', 'Pedidos')}
               {newOnlineOrders > 0 && (
                 <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-orange-200 text-orange-900 text-[11px] font-bold flex items-center justify-center animate-pulse">{newOnlineOrders}</span>
@@ -2211,7 +2288,7 @@ export default function POSScreen() {
               data-tour="pos-presupuestos" onClick={() => setShowQuotesList(true)}
               className={`${hdrBtn} bg-orange-600 hover:bg-orange-700`}
             >
-              <ClipboardList strokeWidth={2.25} className="w-4 h-4" />
+              <HeaderIcon><IconPresupuesto /></HeaderIcon>
               <span className={hdrTip}>Presupuestos</span>
             </button>
           )}
@@ -2222,7 +2299,7 @@ export default function POSScreen() {
               data-tour="pos-acopios" onClick={() => setShowAcopios(true)}
               className={`${hdrBtn} bg-teal-600 hover:bg-teal-700`}
             >
-              <Boxes strokeWidth={2.25} className="w-4 h-4" />
+              <HeaderIcon><IconAcopio /></HeaderIcon>
               <span className={hdrTip}>Acopios</span>
             </button>
           )}
@@ -2258,7 +2335,7 @@ export default function POSScreen() {
               className="group relative flex items-center justify-center gap-1.5 h-8 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer shrink-0 w-8 hover:!bg-rose-50 hover:!text-rose-600 dark:hover:!bg-rose-950/40"
               title="Cerrar sesión"
             >
-              <LogOut strokeWidth={2.25} className="w-4 h-4" />
+              <LogOut strokeWidth={2.5} className="w-4 h-4" />
             </button>
 
             <span className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1 shrink-0" />
@@ -2266,7 +2343,7 @@ export default function POSScreen() {
             {/* Reloj en tiempo real de la PC */}
             {/* En pantallas medianas sin el ícono: así entra el aviso de versión nueva sin correr el logo */}
             <div className="hidden lg:flex items-center gap-1.5 px-1 xl:px-2 text-slate-700 dark:text-slate-200 select-none whitespace-nowrap" title="Hora local del sistema">
-              <Clock strokeWidth={2.25} className="hidden xl:block w-4 h-4 text-slate-400" />
+              <Clock strokeWidth={2.5} className="hidden xl:block w-4 h-4 text-slate-400" />
               <span className="text-[13px] font-bold tabular-nums">{currentTime}</span>
             </div>
 
@@ -2285,17 +2362,17 @@ export default function POSScreen() {
               className="group relative flex items-center justify-center gap-1.5 h-8 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer shrink-0 w-8"
               title="Buscar acciones [Ctrl+K]"
             >
-              <Search strokeWidth={2.25} className="w-4 h-4" />
+              <Search strokeWidth={2.5} className="w-4 h-4" />
             </button>
 
             {/* Conectar celular (F8) */}
             <button data-tour="pos-celular" onClick={handleOpenCellularModal} className="group relative flex items-center justify-center gap-1.5 h-8 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer shrink-0 w-8" title="Conectar celular">
-              <Smartphone strokeWidth={2.25} className="w-4 h-4" />
+              <Smartphone strokeWidth={2.5} className="w-4 h-4" />
             </button>
 
             {/* Pantalla completa (F11) */}
             <button data-tour="pos-fullscreen" onClick={() => toggleFullscreen()} className="group relative flex items-center justify-center gap-1.5 h-8 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-95 cursor-pointer shrink-0 w-8" title="Pantalla completa [F11]">
-              <Maximize2 strokeWidth={2.25} className="w-4 h-4" />
+              <Maximize2 strokeWidth={2.5} className="w-4 h-4" />
             </button>
 
             {/* Panel de administración (F12) */}
@@ -2311,7 +2388,7 @@ export default function POSScreen() {
               className="group relative flex items-center justify-center w-8 h-8 ml-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white transition-colors active:scale-95 cursor-pointer shrink-0"
               title="Panel de administración [F12]"
             >
-              <Settings strokeWidth={2.25} className="w-4 h-4" />
+              <Settings strokeWidth={2.5} className="w-4 h-4" />
             </button>
 
             {/* Marca Ventra */}
@@ -2321,7 +2398,7 @@ export default function POSScreen() {
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col md:flex-row gap-3 md:gap-4 overflow-hidden relative">
+        <div data-tour="pos-area" className="flex-1 flex flex-col md:flex-row gap-3 md:gap-4 overflow-hidden relative">
           {currentSession ? (
             <>
               {/* LEFT: Products Panel */}
@@ -2349,7 +2426,7 @@ export default function POSScreen() {
                 className="group relative w-10 h-10 rounded-xl bg-white dark:bg-slate-850 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-300 dark:hover:border-emerald-800 text-slate-700 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 transition-all active:scale-95 border border-slate-250 dark:border-slate-750 shadow-2xs flex items-center justify-center shrink-0 cursor-pointer" 
                 title="Calculadora [F3]"
               >
-                <Calculator className="w-4.5 h-4.5 group-hover:scale-110 transition-transform text-emerald-600 dark:text-emerald-400" />
+                <Calculator strokeWidth={2.4} className="w-4.5 h-4.5 group-hover:scale-110 transition-transform text-emerald-600 dark:text-emerald-400" />
                 <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-slate-950 text-white dark:bg-white dark:text-slate-900 text-[10.5px] font-mono font-black px-2 py-0.5 rounded-md shadow-2xl z-50 whitespace-nowrap border border-slate-700 dark:border-slate-300">
                   Calculadora [F3]
                 </span>
@@ -2363,18 +2440,19 @@ export default function POSScreen() {
                 className="w-10 h-10 rounded-xl bg-white dark:bg-slate-850 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-all active:scale-95 border border-slate-250 dark:border-slate-750 shadow-2xs flex items-center justify-center shrink-0 cursor-pointer" 
                 title={productViewMode === 'grid' ? "Ver como Lista" : "Ver como Cuadrícula"}
               >
-                {productViewMode === 'grid' ? <List className="w-4 h-4" /> : <Grid className="w-4 h-4" />}
+                {productViewMode === 'grid' ? <List strokeWidth={2.4} className="w-4 h-4" /> : <Grid strokeWidth={2.4} className="w-4 h-4" />}
               </button>
               <button
                 data-tour="pos-devolucion" onClick={() => { setShowReturnModal(true); setReturnProductSelected(null); setReturnSearchQuery(''); setReturnQty(1); }}
                 className="h-10 px-3.5 rounded-xl bg-white dark:bg-slate-850 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 dark:hover:bg-rose-950/30 dark:hover:text-rose-300 text-slate-700 dark:text-slate-200 transition-all active:scale-95 border border-slate-250 dark:border-slate-750 flex items-center gap-1.5 font-semibold text-xs cursor-pointer shrink-0 shadow-2xs"
                 title="Registrar Devolución de Producto"
               >
-                <CornerUpLeft className="w-4 h-4 text-rose-500 dark:text-rose-400" /> Devolución
+                <CornerUpLeft strokeWidth={2.4} className="w-4 h-4 text-rose-500 dark:text-rose-400" /> Devolución
               </button>
             </div>
 
             {/* Categories horizontal bar: los rubros scrollean, el botón de "todos" queda siempre fijo */}
+            {(hasActivePromos || visibleCategories.length > 0 || usableCategories.length > 0) && (
             <div className={`px-4 ${gastro ? 'py-3 bg-amber-50/40 dark:bg-slate-900/70' : 'py-2.5 bg-slate-50/70 dark:bg-slate-900/70'} flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 shrink-0`}>
             <ScrollRow data-tour="pos-categorias">
               <button
@@ -2423,8 +2501,9 @@ export default function POSScreen() {
                 </button>
               )}
             </div>
+            )}
 
-            <div className="flex-1 overflow-y-auto px-5 pb-6 pt-4 custom-scrollbar bg-slate-50/30 dark:bg-slate-900/30">
+            <div className="flex-1 overflow-y-auto px-5 pb-6 pt-4 custom-scrollbar bg-slate-100/70 dark:bg-slate-950/40">
               {!currentSession ? (
                 <div className="flex flex-col items-center justify-center h-full text-center max-w-md mx-auto py-8">
                   <MotionDiv {...(perfMode ? {} : { initial: { scale: 0.95, opacity: 0 }, animate: { scale: 1, opacity: 1 } })} className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-2xl p-8 shadow-2xl w-full text-slate-800 dark:text-slate-200">
@@ -2487,7 +2566,7 @@ export default function POSScreen() {
                 </div>
               ) : (
                 <div className={productViewMode === 'grid' 
-                  ? "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-4"
+                  ? "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-3"
                   : "flex flex-col gap-2"
                 }>
                   <AnimatePresence>
@@ -2570,7 +2649,7 @@ export default function POSScreen() {
                                     </span>
                                   </div>
                                   
-                                  <div className="w-8 h-8 bg-slate-800 group-hover:bg-rose-500 text-slate-300 group-hover:text-slate-950 border border-slate-700 group-hover:border-rose-400 rounded-xl flex items-center justify-center transition-all duration-200 shadow-sm active:scale-90">
+                                  <div className="pos-plus w-8 h-8 bg-slate-800 group-hover:bg-rose-500 text-slate-300 group-hover:text-slate-950 border border-slate-700 group-hover:border-rose-400 rounded-xl flex items-center justify-center transition-all duration-200 shadow-sm active:scale-90">
                                     <Plus className="w-4 h-4 stroke-[2.8]" />
                                   </div>
                                 </div>
@@ -2613,7 +2692,7 @@ export default function POSScreen() {
                                     {formatPrice(finalPrice)}
                                   </span>
                                 </div>
-                                <div className="w-7 h-7 bg-slate-800 group-hover:bg-rose-500 text-slate-300 group-hover:text-slate-950 border border-slate-700 rounded-lg flex items-center justify-center transition-all active:scale-90 shadow-sm">
+                                <div className="pos-plus w-7 h-7 bg-slate-800 group-hover:bg-rose-500 text-slate-300 group-hover:text-slate-950 border border-slate-700 rounded-lg flex items-center justify-center transition-all active:scale-90 shadow-sm">
                                   <Plus className="w-3.5 h-3.5 stroke-[2.8]" />
                                 </div>
                               </div>
@@ -2634,24 +2713,26 @@ export default function POSScreen() {
                             onClick={(e) => {
                               handleProductAdd(product, e);
                             }}
+                            onPointerDown={(e) => startProductDrag(e, product.name, product.id, (shiftKey) => handleProductAdd(product, { shiftKey } as any))}
                             style={{ contain: 'content', contentVisibility: 'auto' }}
-                            className={`group p-3 text-left transition-[transform,border-color,background-color] duration-fast ease-out-soft active:scale-[0.98] select-none flex flex-col justify-between h-[258px] rounded-2xl overflow-hidden ${
+                            title={[product.name, product.barcode || product.sku, product.category?.name].filter(Boolean).join(' · ')}
+                            className={`group p-3 text-left transition-[transform,border-color,background-color] duration-fast ease-out-soft active:scale-[0.98] select-none flex flex-col justify-between h-[172px] rounded-xl overflow-hidden ${
                               selectedProductIndex === navIndex
                                 ? 'border-2 border-rose-500 dark:border-rose-400 bg-rose-50/40 dark:bg-rose-950/30 shadow-md ring-2 ring-rose-500/20'
-                                : 'bg-white dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700/80 hover:border-slate-300 dark:hover:border-slate-500 hover:-translate-y-0.5 shadow-xs'
+                                : 'bg-white dark:bg-slate-800/95 border border-slate-200/60 dark:border-slate-700/60 hover:border-slate-300 dark:hover:border-slate-500 hover:-translate-y-0.5 shadow-xs'
                             }`}
                           >
                             {/* Foto de borde a borde, entera (sin recortar): los productos tienen formas muy distintas */}
-                            <div className={`-mx-3 -mt-3 mb-2 h-[106px] flex-shrink-0 flex items-center justify-center relative overflow-hidden border-b ${gastro && !product.imageUrl ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-100 dark:border-amber-900/40' : product.imageUrl ? 'bg-white border-slate-100 dark:border-slate-700/60' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700/60'}`}>
+                            <div className={`-mx-3 -mt-3 mb-1.5 h-[78px] flex-shrink-0 flex items-center justify-center relative overflow-hidden border-b ${gastro && !product.imageUrl ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-100 dark:border-amber-900/40' : product.imageUrl ? 'bg-white border-slate-100 dark:border-slate-700/60' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700/60'}`}>
                               {gastro && !product.imageUrl ? (
-                                <span className="text-[46px] leading-none select-none transition-transform group-hover:scale-110" aria-hidden>{foodEmoji(product.category?.name || product.name)}</span>
+                                <span className="text-[38px] leading-none select-none transition-transform group-hover:scale-110" aria-hidden>{foodEmoji(product.category?.name || product.name)}</span>
                               ) : product.imageUrl ? (
                                 <img
                                   src={product.imageUrl}
                                   alt={product.name}
                                   loading="lazy"
                                   decoding="async"
-                                  className="w-full h-full object-contain p-2 transition-transform duration-fast group-hover:scale-[1.03]"
+                                  className="w-full h-full object-contain p-1.5 transition-transform duration-fast group-hover:scale-[1.03]"
                                   onError={(e) => {
                                     // Foto rota: queda el recuadro de "sin foto"
                                     const el = e.target as HTMLImageElement;
@@ -2662,11 +2743,26 @@ export default function POSScreen() {
                                 />
                               ) : null}
                               {!gastro && (
-                                <Package className={`${product.imageUrl ? 'hidden ' : ''}w-8 h-8 text-slate-300 dark:text-slate-600`} strokeWidth={1.5} aria-hidden />
+                                <Package className={`${product.imageUrl ? 'hidden ' : ''}w-7 h-7 text-slate-300 dark:text-slate-600`} strokeWidth={1.5} aria-hidden />
                               )}
 
-                              {/* Stock: marca chica en la esquina (en gastronomía se cocina a pedido: no se muestra) */}
-                              {!gastro && (
+                              {(product.location || (product.wholesalePrice && product.wholesaleMinQty)) && (
+                                <span className="absolute bottom-1.5 left-1.5 z-10 flex flex-wrap gap-1 max-w-[calc(100%-12px)]">
+                                  {product.location && (
+                                    <span className="text-[9px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-50/95 dark:bg-amber-950/90 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800/80 inline-flex items-center gap-1 leading-none truncate">
+                                      📍 {product.location}
+                                    </span>
+                                  )}
+                                  {product.wholesalePrice && product.wholesaleMinQty && (
+                                    <span className="text-[9px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50/95 dark:bg-emerald-950/90 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800/80 inline-flex items-center gap-0.5 leading-none">
+                                      x{product.wholesaleMinQty}+ ${product.wholesalePrice}
+                                    </span>
+                                  )}
+                                </span>
+                              )}
+
+                              {/* Stock: solo cuando queda poco (en gastronomía se cocina a pedido: no se muestra) */}
+                              {!gastro && stockBadge && (
                                 <span className={`absolute top-2 right-2 z-10 inline-flex items-center gap-1 text-[10.5px] font-semibold px-1.5 py-[3px] rounded-md leading-none bg-white/95 dark:bg-slate-900/90 shadow-xs ring-1 ring-slate-200/80 dark:ring-slate-700 ${stockBadge.tone}`}>
                                   <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${stockBadge.dot}`} />
                                   {stockBadge.text}
@@ -2674,37 +2770,15 @@ export default function POSScreen() {
                               )}
                             </div>
 
-                            {/* Middle: Title & Barcode Info */}
-                            <div className="flex-1 flex flex-col justify-start min-w-0 mb-1">
-                              <p className="text-[10.5px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 truncate leading-none mb-1 min-h-[10.5px]">{product.category?.name || ''}</p>
-                              <h3 className="text-[13.5px] sm:text-sm font-semibold text-slate-900 dark:text-white line-clamp-2 leading-snug min-h-[38px] max-h-[38px] overflow-hidden mb-1">
+                            {/* Nombre (el código de barras y la categoría están en el cartelito al pasar el mouse) */}
+                            <div className="flex-1 min-w-0">
+                              <h3 className="text-[13.5px] sm:text-sm font-semibold text-slate-900 dark:text-white line-clamp-2 leading-tight max-h-[36px] overflow-hidden">
                                 {product.name}
                               </h3>
-                              {(product.barcode || product.sku) && !gastro && (
-                                <div className="mt-0.5">
-                                  <span className="text-[11px] font-mono font-medium text-slate-400 dark:text-slate-500 inline-block leading-none tracking-tight select-all">
-                                    {product.barcode || product.sku}
-                                  </span>
-                                </div>
-                              )}
-                              {product.location && (
-                                <div className="mt-1">
-                                  <span className="text-[9px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800/80 inline-flex items-center gap-1 leading-none">
-                                    📍 {product.location}
-                                  </span>
-                                </div>
-                              )}
-                              {product.wholesalePrice && product.wholesaleMinQty && (
-                                <div className="mt-1">
-                                  <span className="text-[9px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800/80 inline-flex items-center gap-0.5 leading-none">
-                                    x{product.wholesaleMinQty}+ ${product.wholesalePrice}
-                                  </span>
-                                </div>
-                              )}
                             </div>
 
                             {/* Bottom: Price & Add Button */}
-                            <div className="mt-auto pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 shrink-0">
+                            <div className="mt-auto pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 shrink-0">
                               <span className="text-lg font-bold text-slate-900 dark:text-white tracking-[-0.02em]" title={cardTitle(product)}>
                                 {formatPrice(cardPrice(product))}
                               </span>
@@ -2731,7 +2805,7 @@ export default function POSScreen() {
                                     <Shuffle className="w-4 h-4 stroke-[2.5]" />
                                   </span>
                                 )}
-                                <div className="w-8 h-8 bg-teal-700 text-white dark:bg-teal-600 dark:text-white group-hover:bg-rose-600 group-hover:text-white dark:group-hover:bg-rose-600 dark:group-hover:text-white rounded-lg flex items-center justify-center transition-colors active:scale-90 shrink-0 shadow-sm">
+                                <div className="pos-plus w-8 h-8 bg-teal-700 text-white dark:bg-teal-600 dark:text-white group-hover:bg-rose-600 group-hover:text-white dark:group-hover:bg-rose-600 dark:group-hover:text-white rounded-lg flex items-center justify-center transition-colors active:scale-90 shrink-0 shadow-sm">
                                   <Plus className="w-4 h-4 stroke-[2.8]" />
                                 </div>
                               </div>
@@ -2747,6 +2821,7 @@ export default function POSScreen() {
                             onClick={(e) => {
                               handleProductAdd(product, e);
                             }}
+                            onPointerDown={(e) => startProductDrag(e, product.name, product.id, (shiftKey) => handleProductAdd(product, { shiftKey } as any))}
                             className={`group border rounded-xl p-2.5 text-left transition-all duration-150 active:scale-[0.99] select-none flex items-center justify-between shadow-xs min-h-[58px] ${
                               selectedProductIndex === navIndex
                                 ? 'border-2 border-rose-500 dark:border-rose-400 bg-rose-50/40 dark:bg-rose-950/30 shadow-md ring-2 ring-rose-500/20'
@@ -2794,10 +2869,12 @@ export default function POSScreen() {
                                       {product.category.name}
                                     </span>
                                   )}
-                                  <span className={`inline-flex items-center gap-1 text-[10.5px] font-semibold leading-none ${stockBadge.tone}`}>
-                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${stockBadge.dot}`} />
-                                    {stockBadge.text}
-                                  </span>
+                                  {stockBadge && (
+                                    <span className={`inline-flex items-center gap-1 text-[10.5px] font-semibold leading-none ${stockBadge.tone}`}>
+                                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${stockBadge.dot}`} />
+                                      {stockBadge.text}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -2828,7 +2905,7 @@ export default function POSScreen() {
                               <span className="text-[15px] font-bold text-slate-900 dark:text-white tracking-[-0.02em]" title={cardTitle(product)}>
                                 {formatPrice(cardPrice(product))}
                               </span>
-                              <div className="w-7 h-7 bg-teal-700 text-white dark:bg-teal-600 dark:text-white group-hover:bg-rose-600 group-hover:text-white dark:group-hover:bg-rose-600 dark:group-hover:text-white rounded-lg flex items-center justify-center transition-colors active:scale-90 shrink-0 shadow-2xs">
+                              <div className="pos-plus w-7 h-7 bg-teal-700 text-white dark:bg-teal-600 dark:text-white group-hover:bg-rose-600 group-hover:text-white dark:group-hover:bg-rose-600 dark:group-hover:text-white rounded-lg flex items-center justify-center transition-colors active:scale-90 shrink-0 shadow-2xs">
                                 <Plus className="w-3.5 h-3.5 stroke-[2.8]" />
                               </div>
                             </div>
@@ -2844,36 +2921,60 @@ export default function POSScreen() {
 
           {/* RIGHT: Cart Panel - Widened for better layout */}
           <div data-tour="pos-cart" className={`w-full md:w-[350px] lg:w-[400px] xl:w-[480px] flex-shrink-0 pos-main-panel rounded-2xl flex flex-col overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm ${activeMobileTab === 'cart' ? 'flex' : 'hidden md:flex'}`}>
-            <div className="px-3.5 py-2.5 flex items-center justify-between bg-slate-50/70 dark:bg-slate-900/70 border-b border-slate-200 dark:border-slate-800 gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Ticket en curso</span>
+            {/* Cabecera del ticket: título y, en la misma línea, Pausar / En espera / Reimprimir / Vaciar
+                (antes Pausar y En espera ocupaban una fila entera: así entran más renglones) */}
+            <div className="px-3 py-2 min-h-[65px] flex items-center justify-between bg-slate-50/70 dark:bg-slate-900/70 border-b border-slate-200 dark:border-slate-800 gap-1.5">
+              <div className="flex items-baseline gap-1.5 min-w-0">
+                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">Ticket</span>
                 {cart.length > 0 && (
-                  <span className="text-xs font-medium text-slate-400 dark:text-slate-500">{getItemCount()} {getItemCount() === 1 ? 'artículo' : 'artículos'}</span>
+                  <span className="text-xs font-medium text-slate-400 dark:text-slate-500 whitespace-nowrap">{getItemCount()} {getItemCount() === 1 ? 'art.' : 'arts.'}</span>
                 )}
               </div>
-              <div className="flex items-center gap-1.5">
-                <button 
-                  data-tour="pos-reimprimir" onClick={handleReprintLastTicket} 
-                  title={lastSale ? `Reimprimir Ticket #${lastSale.saleNumber} [F4]` : 'Reimprimir último ticket [F4]'}
-                  className={`text-xs font-semibold px-2.5 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs border active:scale-95 ${
-                    lastSale 
-                      ? 'bg-white dark:bg-slate-850 text-rose-600 dark:text-rose-400 border-rose-200/80 dark:border-rose-800/80 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:border-rose-300' 
+              <div className="flex items-center gap-1 shrink-0">
+                {cart.length > 0 && (
+                  <button
+                    onClick={() => { setHoldCartClientName(''); setShowHoldCartInputModal(true); }}
+                    title="Pausar ticket: ponerlo en espera para atender a otro cliente [F2]"
+                    className="h-8 bg-white hover:bg-amber-50 dark:bg-slate-850 dark:hover:bg-amber-950/30 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:border-amber-300 font-bold text-xs px-2 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs active:scale-95"
+                  >
+                    <PauseCircle className="w-4 h-4 stroke-[2.4] shrink-0 text-amber-500" />
+                    <span>Pausar</span>
+                    <kbd className="text-[9px] font-mono font-bold px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 leading-none shrink-0">F2</kbd>
+                  </button>
+                )}
+                <button
+                  data-tour="pos-espera" onClick={() => { setHeldCartIndex(0); setShowHeldCartsModal(true); }}
+                  title="Tickets en espera"
+                  className="h-8 bg-white hover:bg-slate-50 dark:bg-slate-850 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-bold px-2 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs active:scale-95"
+                >
+                  <History strokeWidth={2.4} className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                  <span className="hidden xl:inline">En espera</span>
+                  {heldCarts.length > 0 && (
+                    <span className="bg-amber-500 text-white rounded-full min-w-4 h-4 px-1 flex items-center justify-center text-[9px] font-black">
+                      {heldCarts.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  data-tour="pos-reimprimir" onClick={handleReprintLastTicket}
+                  title={lastSale ? `Reimprimir el ticket #${lastSale.saleNumber}` : 'Reimprimir el último ticket'}
+                  aria-label="Reimprimir el último ticket"
+                  className={`h-8 w-8 rounded-lg transition-all flex items-center justify-center cursor-pointer shadow-2xs border active:scale-95 ${
+                    lastSale
+                      ? 'bg-white dark:bg-slate-850 text-rose-600 dark:text-rose-400 border-rose-200/80 dark:border-rose-800/80 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:border-rose-300'
                       : 'bg-slate-100/70 dark:bg-slate-800/40 text-slate-400 dark:text-slate-500 border-dashed border-slate-250 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
-                  <Printer className="w-3.5 h-3.5 shrink-0" />
-                  <span>Reimprimir</span>
-                  <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 leading-none">F4</span>
+                  <Printer strokeWidth={2.4} className="w-4 h-4 shrink-0" />
                 </button>
-
-                <button 
-                  onClick={() => trailClearCart()} 
+                <button
+                  onClick={() => trailClearCart()}
                   disabled={cart.length === 0}
-                  className="text-xs font-semibold text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 px-2 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+                  aria-label="Vaciar ticket"
+                  className="h-8 w-8 text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-colors flex items-center justify-center cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
                   title="Vaciar todos los productos del ticket actual"
                 >
-                  <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                  <span>Vaciar</span>
+                  <Trash2 strokeWidth={2.4} className="w-4 h-4 text-rose-500" />
                 </button>
               </div>
             </div>
@@ -2977,46 +3078,6 @@ export default function POSScreen() {
               </div>
             )}
 
-            <div className="px-4 py-2.5 flex items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/40 gap-2">
-              <div className="flex items-center gap-2 flex-1">
-                {cart.length > 0 && (
-                  <div className="relative group/pause flex-1">
-                    <button 
-                      onClick={() => {
-                        setHoldCartClientName('');
-                        setShowHoldCartInputModal(true);
-                      }} 
-                      className="w-full bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs py-2 px-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
-                    >
-                      <PauseCircle className="w-4 h-4 stroke-[2.5] shrink-0" />
-                      <span className="truncate">Pausar ticket</span>
-                      <kbd className="text-[9.5px] bg-black/20 text-white font-mono font-black px-1.5 py-0.5 rounded ml-0.5 shrink-0">F2</kbd>
-                    </button>
-                    <div className="pointer-events-none absolute bottom-full mb-2 left-1/2 -translate-x-1/2 opacity-0 group-hover/pause:opacity-100 transition-opacity duration-150 z-50 whitespace-nowrap">
-                      <div className="bg-slate-950 text-white text-[10.5px] font-medium px-2.5 py-1 rounded-lg shadow-xl border border-slate-700 flex items-center gap-1">
-                        <span>Poner ticket actual en espera</span>
-                        <span className="font-mono font-bold text-amber-400">[F2]</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                <button 
-                  data-tour="pos-espera" onClick={() => { setHeldCartIndex(0); setShowHeldCartsModal(true); }} 
-                  className="flex-1 bg-white hover:bg-slate-50 dark:bg-slate-850 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-bold py-2 px-3 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs active:scale-95"
-                  title="Ver los tickets guardados en espera"
-                >
-                  <History className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-                  <span>En espera</span>
-                  {heldCarts.length > 0 && (
-                    <span className="ml-1 bg-amber-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-black">
-                      {heldCarts.length}
-                    </span>
-                  )}
-                </button>
-              </div>
-            </div>
-
             {/* Pedido de preventa: al cobrarlo queda como venta */}
             {activeOrder && cart.length > 0 && (
               <div className="mx-4 mt-2 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800 text-xs text-sky-900 dark:text-sky-200">
@@ -3116,13 +3177,16 @@ export default function POSScreen() {
                     return (
                       <MotionDiv 
                         key={item.cartKey} 
+                        data-cart-product={item.productId}
+                        data-qty-row={item.cartKey}
+                        onPointerDown={(e: React.PointerEvent<HTMLElement>) => startCartRowDrag(e, () => { trailRemoveLine(item.cartKey); focusSearch(); })}
                         {...(perfMode ? {} : {
                           initial: { opacity: 0, x: -6 },
                           animate: { opacity: 1, x: 0 },
                           exit: { opacity: 0, height: 0 },
                           transition: { duration: 0.12 }
                         })}
-                        className={`py-3 border-b border-slate-200 dark:border-slate-800 last:border-0 group flex items-center gap-3.5 anim-rise`}
+                        className={`py-2 border-b border-slate-200 dark:border-slate-800 last:border-0 group flex items-center gap-3 anim-rise`}
                       >
                         {/* Product Image */}
                         {gastro && item.productId !== QUICK_SALE_PRODUCT_ID && !item.imageUrl ? (
@@ -3150,7 +3214,7 @@ export default function POSScreen() {
 
                         {/* Product Name & High-Contrast Unit Price */}
                         <div className="flex-1 min-w-0">
-                          <h4 className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-white leading-tight line-clamp-2 pr-1">{item.name}</h4>
+                          <h4 className="text-[13px] sm:text-[15px] font-semibold text-slate-900 dark:text-white leading-tight line-clamp-2 pr-1">{item.name}</h4>
                           {gastro && <ItemComanda item={item} />}
                           {item.isPromo && item.productsMetadata && (
                             <p className="text-[11px] font-medium text-slate-600 dark:text-slate-300 mt-0.5 tracking-tight leading-relaxed">
@@ -3197,21 +3261,21 @@ export default function POSScreen() {
                           </div>
                         ) : isKgLine(item) ? (
                           // Por kilo: de a 100 g, y el peso escrito como se dice ("250 g")
-                          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
+                          <div data-qty-wheel={item.cartKey} title="Girá la rueda del mouse para cambiar el peso" className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
                             <button onClick={() => { const next = Math.round((item.quantity - 0.1) * 1000) / 1000; if (next > 0) trailSetQuantity(item.cartKey, next); focusSearch(); }} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 flex items-center justify-center text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 transition-all shadow-xs active:scale-90 font-bold" title="Restar 100 g"><Minus className="w-3 h-3 stroke-[3]" /></button>
-                            <span className="min-w-[52px] px-1 text-center text-sm font-bold tabular-nums text-slate-900 dark:text-white whitespace-nowrap">{fmtKgShort(item.quantity)}</span>
+                            <span data-qty-num className="inline-block min-w-[52px] px-1 text-center text-sm font-bold tabular-nums text-slate-900 dark:text-white whitespace-nowrap">{fmtKgShort(item.quantity)}</span>
                             <button onClick={() => { updateQuantity(item.cartKey, Math.round((item.quantity + 0.1) * 1000) / 1000); focusSearch(); }} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 flex items-center justify-center text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 transition-all shadow-xs active:scale-90 font-bold" title="Sumar 100 g"><Plus className="w-3 h-3 stroke-[3]" /></button>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
+                          <div data-qty-wheel={item.cartKey} title="Girá la rueda del mouse para cambiar la cantidad" className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
                             <button onClick={() => { trailSetQuantity(item.cartKey, item.quantity - (item.packSize || 1)); focusSearch(); }} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 flex items-center justify-center text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 transition-all shadow-xs active:scale-90 font-bold"><Minus className="w-3 h-3 stroke-[3]" /></button>
                             {item.packSize ? (
-                              <span className="min-w-8 px-0.5 text-center leading-none" title={`${item.quantity} unidades`}>
+                              <span data-qty-num className="inline-block min-w-8 px-0.5 text-center leading-none" title={`${item.quantity} unidades`}>
                                 <span className="block text-sm font-bold text-slate-900 dark:text-white">{Math.round((item.quantity / item.packSize) * 100) / 100}</span>
                                 <span className="block text-[9px] font-semibold uppercase text-slate-500 dark:text-slate-400">{item.quantity / item.packSize === 1 ? 'bulto' : 'bultos'}</span>
                               </span>
                             ) : (
-                              <span className="w-8 text-center text-sm font-bold text-slate-900 dark:text-white">{item.quantity}</span>
+                              <span data-qty-num className="inline-block w-8 text-center text-sm font-bold text-slate-900 dark:text-white">{item.quantity}</span>
                             )}
                             <button onClick={() => { updateQuantity(item.cartKey, item.quantity + (item.packSize || 1)); focusSearch(); }} className="w-7 h-7 rounded-lg bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 flex items-center justify-center text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 transition-all shadow-xs active:scale-90 font-bold"><Plus className="w-3 h-3 stroke-[3]" /></button>
                           </div>
@@ -3225,7 +3289,7 @@ export default function POSScreen() {
                                 {formatPrice(originalTotal)}
                               </span>
                             )}
-                            <p className="text-[15px] font-bold text-slate-900 dark:text-white leading-none tracking-[-0.02em]">{formatPrice(promoTotal)}</p>
+                            <p className="text-base font-bold text-slate-900 dark:text-white leading-none tracking-[-0.02em]">{formatPrice(promoTotal)}</p>
                           </div>
                           <button onClick={() => { trailRemoveLine(item.cartKey); focusSearch(); }} className="text-slate-400 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 transition-all p-1 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-lg active:scale-90" title="Eliminar del carrito">
                             <X className="w-4 h-4" />
@@ -3239,12 +3303,8 @@ export default function POSScreen() {
               )}
             </div>
 
-            <div data-tour="pos-totales" className="bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-md px-4 py-4 border-t border-slate-200 dark:border-slate-800 space-y-2.5">
-              <div className="bg-white dark:bg-slate-800/80 rounded-2xl p-3.5 border border-slate-200/90 dark:border-slate-700/80 shadow-xs space-y-2">
-                <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
-                  <span className="text-[13px] font-medium normal-case tracking-normal text-slate-500 dark:text-slate-400">Artículos</span>
-                  <span className="text-[13px] font-semibold normal-case tracking-normal text-slate-900 dark:text-white">{getItemCount()}</span>
-                </div>
+            <div data-tour="pos-totales" className="bg-slate-50 dark:bg-slate-900 px-4 pt-3 pb-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
+              <div className="px-1 space-y-2">
                 {getAppliedPromotions().map((promo, idx) => (
                   <div key={idx} className="flex items-center justify-between text-xs font-bold text-emerald-600 dark:text-emerald-400 animate-in slide-in-from-bottom-1">
                     <span className="flex items-center gap-1"><Tag className="w-3 h-3 text-amber-500" /> {promo.name}</span>
@@ -3265,9 +3325,9 @@ export default function POSScreen() {
                     <span className="font-bold">+{formatPrice(activeServices)}</span>
                   </div>
                 )}
-                <div className="flex items-center justify-between pt-2.5 border-t border-slate-100 dark:border-slate-700/70">
+                <div className="flex items-center justify-between pt-2.5 border-t border-slate-100 dark:border-slate-700/70 first:pt-0 first:border-t-0">
                   <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">Total</span>
-                  <span key={getFinalTotal() + activePaymentSurcharge + activeServices} className="anim-bump text-[34px] sm:text-[40px] leading-none font-extrabold text-slate-950 dark:text-white tracking-[-0.03em]">{formatPrice(getFinalTotal() + activePaymentSurcharge + activeServices)}</span>
+                  <span data-pos-total key={getFinalTotal() + activePaymentSurcharge + activeServices} className="anim-bump text-[34px] sm:text-[40px] leading-none font-extrabold text-slate-950 dark:text-white tracking-[-0.03em]">{formatPrice(getFinalTotal() + activePaymentSurcharge + activeServices)}</span>
                 </div>
               </div>
 
@@ -3409,6 +3469,7 @@ export default function POSScreen() {
             }} 
             onSuccess={() => { 
               ventriVentaHecha(); // festejos de Ventri (primera venta, la 100…), ver VentriCaja
+              cashInFx(formatPrice(getFinalTotal() + activePaymentSurcharge + activeServices)); // "la plata entra a la caja" (copias, no frena)
               applySoldStock(usePOSStore.getState().cart);
               clearCart(); 
               setShowPayment(false); 

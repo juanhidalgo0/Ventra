@@ -1,0 +1,582 @@
+{
+ "nota": "Fotos de los productos de ejemplo de la caja de práctica (Primeros pasos). Cada una con su fuente y licencia.",
+ "fotos": [
+  {
+   "foto": "marcas/coca225",
+   "producto": "Coca-Cola coca cola",
+   "fuente": "Open Food Facts",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://world.openfoodfacts.org/product/7790895000997"
+  },
+  {
+   "foto": "marcas/coca500",
+   "producto": "Coca-Cola Coca-Cola sabor original 500",
+   "fuente": "Open Food Facts",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://world.openfoodfacts.org/product/7790895000782"
+  },
+  {
+   "foto": "marcas/cocazero15",
+   "producto": "Coca-Cola Coca zero 1,5l",
+   "fuente": "Open Food Facts",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://world.openfoodfacts.org/product/7790895067556"
+  },
+  {
+   "foto": "marcas/villa500",
+   "producto": "Villavicencio Sin Gas",
+   "fuente": "Open Food Facts",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://world.openfoodfacts.org/product/7799155000173"
+  },
+  {
+   "foto": "marcas/villa2l",
+   "producto": "Villavicencio Agua mineral 2 lt",
+   "fuente": "Open Food Facts",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://world.openfoodfacts.org/product/7790315000422"
+  },
+  {
+   "foto": "marcas/cepita",
+   "producto": "Coca-Cola Cepita del Valle, Naranja (Variedad)",
+   "fuente": "Open Food Facts",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://world.openfoodfacts.org/product/7790895648441"
+  },
+  {
+   "foto": "marcas/jorgito",
+   "producto": "Jorgito Alfajor Jorgito",
+   "fuente": "Open Food Facts",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://world.openfoodfacts.org/product/77905741"
+  },
+  {
+   "foto": "marcas/milka",
+   "producto": "Milka Milka Almendras",
+   "fuente": "Open Food Facts",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://world.openfoodfacts.org/product/7622300990152"
+  },
+  {
+   "foto": "marcas/sugus",
+   "producto": "Arcor, sugus Confitados",
+   "fuente": "Open Food Facts",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://world.openfoodfacts.org/product/7790580056001"
+  },
+  {
+   "foto": "marcas/beldent",
+   "producto": "Beldent Menta",
+   "fuente": "Open Food Facts",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://world.openfoodfacts.org/product/77969071"
+  },
+  {
+   "foto": "marcas/express",
+   "producto": "Terrabusi Terrabusi express clásicas",
+   "fuente": "Open Food Facts",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://world.openfoodfacts.org/product/7622201509194"
+  },
+  {
+   "foto": "marcas/playadito",
+   "producto": "COOP.AGRIC.DE LA COLONIA LIEBIG LTDA., Liebig Playadito",
+   "fuente": "Open Food Facts",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://world.openfoodfacts.org/product/7793704000911"
+  },
+  {
+   "foto": "marcas/serenisima",
+   "producto": "La Serenísima Leche Protein",
+   "fuente": "Open Food Facts",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://world.openfoodfacts.org/product/7790742358608"
+  },
+  {
+   "foto": "marcas/quilmes",
+   "producto": "Quilmes Clásica",
+   "fuente": "Open Food Facts",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://world.openfoodfacts.org/product/7792798012923"
+  },
+  {
+   "foto": "marcas/guaymallen",
+   "producto": "Guaymallen Alfajor de Dulce de Leche",
+   "fuente": "Open Food Facts",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://world.openfoodfacts.org/product/77980229"
+  },
+  {
+   "foto": "marcas/topline",
+   "producto": "Topline, Topline Seven Ultra 7 Clean Mint",
+   "fuente": "Open Food Facts",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://world.openfoodfacts.org/product/7790580120573"
+  },
+  {
+   "foto": "marcas/taragui",
+   "producto": "Taragui Yerba mate",
+   "fuente": "Open Food Facts",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://world.openfoodfacts.org/product/7790387110159"
+  },
+  {
+   "foto": "marcas/matarazzo",
+   "producto": "Matarazzo Tallarín N°5",
+   "fuente": "Open Food Facts",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://world.openfoodfacts.org/product/7790070336316"
+  },
+  {
+   "foto": "marcas/ayudin",
+   "producto": "Lavandina ayudin",
+   "fuente": "Open Food Facts",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://world.openfoodfacts.org/product/7790132098459"
+  },
+  {
+   "foto": "carniceria/asado",
+   "fuente": "Pexels",
+   "licencia": "Licencia de Pexels (uso libre)",
+   "enlace": "https://www.pexels.com/photo/12884544/"
+  },
+  {
+   "foto": "carniceria/vacio",
+   "fuente": "Pexels",
+   "licencia": "Licencia de Pexels (uso libre)",
+   "enlace": "https://www.pexels.com/photo/5045088/"
+  },
+  {
+   "foto": "carniceria/nalga",
+   "fuente": "Pexels",
+   "licencia": "Licencia de Pexels (uso libre)",
+   "enlace": "https://www.pexels.com/photo/4661802/"
+  },
+  {
+   "foto": "carniceria/bife",
+   "fuente": "Pexels",
+   "licencia": "Licencia de Pexels (uso libre)",
+   "enlace": "https://www.pexels.com/photo/5313880/"
+  },
+  {
+   "foto": "carniceria/picada",
+   "fuente": "Pexels",
+   "licencia": "Licencia de Pexels (uso libre)",
+   "enlace": "https://www.pexels.com/photo/128401/"
+  },
+  {
+   "foto": "carniceria/bondiola",
+   "fuente": "Pexels",
+   "licencia": "Licencia de Pexels (uso libre)",
+   "enlace": "https://www.pexels.com/photo/9091138/"
+  },
+  {
+   "foto": "carniceria/pollo",
+   "fuente": "Pexels",
+   "licencia": "Licencia de Pexels (uso libre)",
+   "enlace": "https://www.pexels.com/photo/10842249/"
+  },
+  {
+   "foto": "carniceria/pechuga",
+   "fuente": "Pexels",
+   "licencia": "Licencia de Pexels (uso libre)",
+   "enlace": "https://www.pexels.com/photo/6107731/"
+  },
+  {
+   "foto": "carniceria/chorizo",
+   "fuente": "Pexels",
+   "licencia": "Licencia de Pexels (uso libre)",
+   "enlace": "https://www.pexels.com/photo/28881687/"
+  },
+  {
+   "foto": "carniceria/morcilla",
+   "fuente": "Pexels",
+   "licencia": "Licencia de Pexels (uso libre)",
+   "enlace": "https://www.pexels.com/photo/31372367/"
+  },
+  {
+   "foto": "verduleria/papa",
+   "titulo": "Free top view raw potato",
+   "autor": null,
+   "fuente": "rawpixel (vía Openverse)",
+   "licencia": "CC CC0 1.0",
+   "enlace": "https://www.rawpixel.com/image/5920748/photo-image-public-domain-plant-fruit"
+  },
+  {
+   "foto": "verduleria/cebolla",
+   "titulo": "Fresh red onions piled together with purple skins and loose onion peels.",
+   "autor": "Hemant Kumar Chhapoliya",
+   "fuente": "wordpress (vía Openverse)",
+   "licencia": "CC CC0 1.0",
+   "enlace": "https://wordpress.org/photos/photo/576ac0a519/"
+  },
+  {
+   "foto": "verduleria/tomate",
+   "titulo": "File:Tomato je.jpg",
+   "autor": "Softeis",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Tomato_je.jpg"
+  },
+  {
+   "foto": "verduleria/zanahoria",
+   "titulo": "Fresh Carrots",
+   "autor": "cookbookman17",
+   "fuente": "flickr (vía Openverse)",
+   "licencia": "CC BY 2.0",
+   "enlace": "https://www.flickr.com/photos/58545726@N02/6093275016"
+  },
+  {
+   "foto": "verduleria/zapallo",
+   "titulo": "File:Cucurbita moschata Butternut 2012 G2.jpg",
+   "autor": "George Chernilevsky",
+   "fuente": "Wikimedia Commons",
+   "licencia": "Public domain",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Cucurbita_moschata_Butternut_2012_G2.jpg"
+  },
+  {
+   "foto": "verduleria/banana",
+   "titulo": "File:Bunch of bananas on sale.jpg",
+   "autor": "Wilfredor",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Bunch_of_bananas_on_sale.jpg"
+  },
+  {
+   "foto": "verduleria/manzana",
+   "titulo": "File:Red Apple.jpg",
+   "autor": "Abhijit Tembhekar from Mumbai, India",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY 2.0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Red_Apple.jpg"
+  },
+  {
+   "foto": "verduleria/naranja",
+   "titulo": "File:Oranges - whole-halved-segment.jpg",
+   "autor": "Ivar Leidus",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY-SA 4.0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Oranges_-_whole-halved-segment.jpg"
+  },
+  {
+   "foto": "verduleria/limon",
+   "titulo": "File:Lemon.jpg",
+   "autor": "André Karwath aka Aka",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY-SA 2.5",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Lemon.jpg"
+  },
+  {
+   "foto": "verduleria/lechuga",
+   "titulo": "File:Lettuce in a stack.jpg",
+   "autor": "Jeffery Martin",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Lettuce_in_a_stack.jpg"
+  },
+  {
+   "foto": "verduleria/perejil",
+   "titulo": "Fresh Parsley",
+   "autor": "cookbookman17",
+   "fuente": "flickr (vía Openverse)",
+   "licencia": "CC BY 2.0",
+   "enlace": "https://www.flickr.com/photos/58545726@N02/5620131626"
+  },
+  {
+   "foto": "verduleria/huevos",
+   "titulo": "Eggs in an egg carton",
+   "autor": "Ivan Radic",
+   "fuente": "flickr (vía Openverse)",
+   "licencia": "CC BY 2.0",
+   "enlace": "https://www.flickr.com/photos/26344495@N05/49829839696"
+  },
+  {
+   "foto": "fiambreria/jamon",
+   "titulo": "File:13-08-31-wien-redaktionstreffen-EuT-by-Bi-frie-171.jpg",
+   "autor": "Bi-frie (talk)",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY 3.0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:13-08-31-wien-redaktionstreffen-EuT-by-Bi-frie-171.jpg"
+  },
+  {
+   "foto": "fiambreria/crudo",
+   "titulo": "File:Prosciutto di parma.jpg",
+   "autor": "ItalianEpicure.com",
+   "fuente": "Wikimedia Commons",
+   "licencia": "Public domain",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Prosciutto_di_parma.jpg"
+  },
+  {
+   "foto": "fiambreria/salamin",
+   "titulo": "File:Mortadella orta affettata.jpg",
+   "autor": "F Ceragioli",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Mortadella_orta_affettata.jpg"
+  },
+  {
+   "foto": "fiambreria/salame",
+   "titulo": "smoked meat salami slices on wood cutting board",
+   "autor": "Berries.com",
+   "fuente": "flickr (vía Openverse)",
+   "licencia": "CC BY 2.0",
+   "enlace": "https://www.flickr.com/photos/126560659@N06/17233807792"
+  },
+  {
+   "foto": "fiambreria/quesomaq",
+   "titulo": "File:White cheddar cheese sliced CNE.jpg",
+   "autor": "CNEcija12345",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY-SA 4.0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:White_cheddar_cheese_sliced_CNE.jpg"
+  },
+  {
+   "foto": "fiambreria/cremoso",
+   "titulo": "File:20130911-OC-RBN-3834 (9736714320).jpg",
+   "autor": "U.S. Department of Agriculture\n\nBob Nichols/Photographer/United States Department of Agriculture-Office of Communications-Photography Services Division",
+   "fuente": "Wikimedia Commons",
+   "licencia": "Public domain",
+   "enlace": "https://commons.wikimedia.org/wiki/File:20130911-OC-RBN-3834_(9736714320).jpg"
+  },
+  {
+   "foto": "fiambreria/tybo",
+   "titulo": "Dutch Slow Food Raw Cow's Milk Gouda Cheese",
+   "autor": "cheeseslave",
+   "fuente": "flickr (vía Openverse)",
+   "licencia": "CC BY 2.0",
+   "enlace": "https://www.flickr.com/photos/19359283@N00/5783715341"
+  },
+  {
+   "foto": "fiambreria/muzza",
+   "titulo": "Miso Mozzarella Cheese",
+   "autor": "Phil Denton",
+   "fuente": "flickr (vía Openverse)",
+   "licencia": "CC BY-SA 2.0",
+   "enlace": "https://www.flickr.com/photos/37475039@N04/8933103130"
+  },
+  {
+   "foto": "fiambreria/panmiga",
+   "titulo": "White Sandwich Bread",
+   "autor": "Annie Mueller",
+   "fuente": "flickr (vía Openverse)",
+   "licencia": "CC BY-SA 2.0",
+   "enlace": "https://www.flickr.com/photos/39404326@N02/3749703565"
+  },
+  {
+   "foto": "fiambreria/aceitunas",
+   "titulo": "File:DFC 3933 A close-up of a pile of pitted green olives showing their smooth glossy skins and hollow centers.jpg",
+   "autor": "PattayaPatrol",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY-SA 4.0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:DFC_3933_A_close-up_of_a_pile_of_pitted_green_olives_showing_their_smooth_glossy_skins_and_hollow_centers.jpg"
+  },
+  {
+   "foto": "ferreteria/tornillo",
+   "titulo": "File:Self drilling screw.tiff",
+   "autor": "Susan Wright",
+   "fuente": "Wikimedia Commons",
+   "licencia": "Public domain",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Self_drilling_screw.tiff"
+  },
+  {
+   "foto": "ferreteria/tarugo",
+   "titulo": "File:Tasselli wall plug.jpg",
+   "autor": "Alessio Sbarbaro",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY-SA 2.5",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Tasselli_wall_plug.jpg"
+  },
+  {
+   "foto": "ferreteria/clavos",
+   "titulo": "File:Nails Flat Head Steel Industry 4607200 Edited 2020 (49931938461).jpg",
+   "autor": "Tool Dude8mm",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY 2.0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Nails_Flat_Head_Steel_Industry_4607200_Edited_2020_(49931938461).jpg"
+  },
+  {
+   "foto": "ferreteria/cable",
+   "titulo": "File:Rosin core solder.JPG",
+   "autor": "Kevin Hadley",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Rosin_core_solder.JPG"
+  },
+  {
+   "foto": "ferreteria/lampara",
+   "titulo": "File:LED-E27-Light-Bulb-1134.jpg",
+   "autor": "Loadmaster (David R. Tribble)\n\n\n\n\n\n\nThis image was made by Loadmaster (David R. Tribble).\nEmail the author:  David R. Tribble\nAlso see my personal gallery at Google Photos",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY-SA 4.0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:LED-E27-Light-Bulb-1134.jpg"
+  },
+  {
+   "foto": "ferreteria/cinta",
+   "titulo": "File:Ca 1970 roll of polyethylene electrical insulating tape by Norgesplaster AS Mosby Norway.jpg",
+   "autor": "R. Henrik Nilsson",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY 4.0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Ca_1970_roll_of_polyethylene_electrical_insulating_tape_by_Norgesplaster_AS_Mosby_Norway.jpg"
+  },
+  {
+   "foto": "ferreteria/latex",
+   "titulo": "File:White primer bucket.jpg",
+   "autor": "Daniel Case",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:White_primer_bucket.jpg"
+  },
+  {
+   "foto": "ferreteria/rodillo",
+   "titulo": "File:Paint-roller (23956075297).jpg",
+   "autor": "r. nial bradshaw",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY 2.0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Paint-roller_(23956075297).jpg"
+  },
+  {
+   "foto": "varios/remera",
+   "titulo": "DIY White T-Shirt Refashion",
+   "autor": "Stacie Stacie Stacie",
+   "fuente": "flickr (vía Openverse)",
+   "licencia": "CC BY-SA 2.0",
+   "enlace": "https://www.flickr.com/photos/35754040@N04/8052454047"
+  },
+  {
+   "foto": "varios/jean",
+   "titulo": "my ol' jeans",
+   "autor": "aesop",
+   "fuente": "flickr (vía Openverse)",
+   "licencia": "CC BY-SA 2.0",
+   "enlace": "https://www.flickr.com/photos/99861378@N00/5690411553"
+  },
+  {
+   "foto": "varios/gorra",
+   "titulo": "File:Baseball cap.png",
+   "autor": "Original photograph by TexasRebelDerivative version by ReneeWrites",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY 4.0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Baseball_cap.png"
+  },
+  {
+   "foto": "varios/medias",
+   "titulo": "164-365 (Year 8) Fancy socks",
+   "autor": "♔ Georgie R",
+   "fuente": "flickr (vía Openverse)",
+   "licencia": "CC BY-ND 2.0",
+   "enlace": "https://www.flickr.com/photos/19396658@N00/15389679136"
+  },
+  {
+   "foto": "varios/taza",
+   "titulo": "white coffee mug “begin” written",
+   "autor": null,
+   "fuente": "rawpixel (vía Openverse)",
+   "licencia": "CC CC0 1.0",
+   "enlace": "https://www.rawpixel.com/image/3283741/free-photo-image-mug-quote-coffee"
+  },
+  {
+   "foto": "varios/cubiertos",
+   "titulo": "Cutlery - Knifes, Spoons, Forks",
+   "autor": "espensorvik",
+   "fuente": "flickr (vía Openverse)",
+   "licencia": "CC BY 2.0",
+   "enlace": "https://www.flickr.com/photos/28478778@N05/5728471653"
+  },
+  {
+   "foto": "varios/repasador",
+   "titulo": "Vintage Kitchen Towel",
+   "autor": "anniehp",
+   "fuente": "flickr (vía Openverse)",
+   "licencia": "CC BY 2.0",
+   "enlace": "https://www.flickr.com/photos/41869756@N05/4682112385"
+  },
+  {
+   "foto": "varios/cinta",
+   "titulo": "Handmade gift wrap",
+   "autor": "erika g.",
+   "fuente": "flickr (vía Openverse)",
+   "licencia": "CC BY-SA 2.0",
+   "enlace": "https://www.flickr.com/photos/64406396@N00/5347998667"
+  },
+  {
+   "foto": "varios/hilo",
+   "titulo": "File:Wooden spools of sewing thread in different colors 6.jpg",
+   "autor": "W.carter",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY-SA 4.0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Wooden_spools_of_sewing_thread_in_different_colors_6.jpg"
+  },
+  {
+   "foto": "varios/pizzamuzza",
+   "titulo": "File:Pizza with mozzarella.jpg",
+   "autor": "CNEcija12345",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY-SA 4.0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Pizza_with_mozzarella.jpg"
+  },
+  {
+   "foto": "varios/pizzanapo",
+   "titulo": "Hjemmelavet pizza",
+   "autor": "andreas hagerman",
+   "fuente": "flickr (vía Openverse)",
+   "licencia": "CC BY 2.0",
+   "enlace": "https://www.flickr.com/photos/41267663@N00/8437727141"
+  },
+  {
+   "foto": "varios/empanadas",
+   "titulo": "File:Empanadas argentinas fritas de pollo (Argentina).jpg",
+   "autor": "Horacio Cambeiro",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Empanadas_argentinas_fritas_de_pollo_(Argentina).jpg"
+  },
+  {
+   "foto": "varios/fotocopia",
+   "titulo": "File:Sharp MX-7500 photocopier.jpg",
+   "autor": "Baron Maddock",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY 4.0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Sharp_MX-7500_photocopier.jpg"
+  },
+  {
+   "foto": "varios/impresion",
+   "titulo": "File:LFP Color Management Charts.jpg",
+   "autor": "Smokeonthewater",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY-SA 4.0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:LFP_Color_Management_Charts.jpg"
+  },
+  {
+   "foto": "varios/anillado",
+   "titulo": "File:Spiral-bound notebooks.JPG",
+   "autor": "Mk2010",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY-SA 3.0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Spiral-bound_notebooks.JPG"
+  },
+  {
+   "foto": "varios/tarjetas",
+   "titulo": "moo business card boxes",
+   "autor": "osde8info",
+   "fuente": "flickr (vía Openverse)",
+   "licencia": "CC BY-SA 2.0",
+   "enlace": "https://www.flickr.com/photos/8764442@N07/4114678882"
+  },
+  {
+   "foto": "varios/volantes",
+   "titulo": "File:Print af flyers hos Jensen Print.jpg",
+   "autor": "Lars H. Jensen",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY-SA 4.0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Print_af_flyers_hos_Jensen_Print.jpg"
+  },
+  {
+   "foto": "varios/sello",
+   "titulo": "File:Rubber stamp printy dater.jpg",
+   "autor": "Zv0486~commonswiki",
+   "fuente": "Wikimedia Commons",
+   "licencia": "CC BY-SA 4.0",
+   "enlace": "https://commons.wikimedia.org/wiki/File:Rubber_stamp_printy_dater.jpg"
+  }
+ ]
+}

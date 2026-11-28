@@ -116,6 +116,23 @@ export default function GuidedTour() {
   const next = useCallback(() => { dir.current = 1; if (isLast) finish(); else setIndex((i) => i + 1); }, [isLast, finish]);
   const back = useCallback(() => { dir.current = -1; setIndex((i) => Math.max(0, i - 1)); }, []);
 
+  // Paso "Probalo": se espera que el usuario haga la acción; cuando sale, festeja y sigue solo
+  const [tried, setTried] = useState(false);
+  useEffect(() => {
+    setTried(false);
+    const want = step?.waitFor;
+    if (!want) return;
+    let timer = 0;
+    const on = (e: Event) => {
+      if ((e as CustomEvent).detail !== want) return;
+      setTried(true);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => { dir.current = 1; setIndex((i) => (i === index ? i + 1 : i)); }, 1400);
+    };
+    window.addEventListener('ventra-tour-action', on);
+    return () => { window.removeEventListener('ventra-tour-action', on); window.clearTimeout(timer); };
+  }, [step, index]);
+
   // Enter a step: run its screen action, optionally click the target, then bring it into view.
   useEffect(() => {
     if (!step) return;
@@ -228,9 +245,10 @@ export default function GuidedTour() {
   const glide = 'all 320ms cubic-bezier(0.22, 1, 0.36, 1)';
 
   return createPortal(
-    <div className="fixed inset-0 z-[10000] tour-enter" role="dialog" aria-modal="true" aria-label={step.title}>
-      {/* Click shield: the page stays visible but inert while touring */}
-      <div className="absolute inset-0" onClick={(e) => e.stopPropagation()} />
+    <div className="fixed inset-0 z-[10000] tour-enter" role="dialog" aria-modal="true" aria-label={step.title}
+      style={step.waitFor ? { pointerEvents: 'none' } : undefined}>
+      {/* Click shield: the page stays visible but inert while touring (en un paso "Probalo" se puede usar) */}
+      {!step.waitFor && <div className="absolute inset-0" onClick={(e) => e.stopPropagation()} />}
 
       {/* Dim everything except the target: an SVG mask with a rounded hole.
           (Not box-shadow — performance mode strips shadows from every div.) */}
@@ -252,7 +270,7 @@ export default function GuidedTour() {
       <div
         ref={popRef}
         className="keep-style keep-animated absolute w-[300px] max-w-[calc(100vw-24px)] bg-white rounded-2xl shadow-lg border border-slate-200/70 px-5 pt-5 pb-4 font-sans"
-        style={{ top: pos.top, left: pos.left, opacity: waiting ? 0 : 1, transition: 'top 320ms cubic-bezier(0.22, 1, 0.36, 1), left 320ms cubic-bezier(0.22, 1, 0.36, 1), opacity 160ms ease-out' }}
+        style={{ pointerEvents: 'auto', top: pos.top, left: pos.left, opacity: waiting ? 0 : 1, transition: 'top 320ms cubic-bezier(0.22, 1, 0.36, 1), left 320ms cubic-bezier(0.22, 1, 0.36, 1), opacity 160ms ease-out' }}
       >
         {ventriCara && (
           <VentriImg key={`ventri-${activeTour}-${index}`} cara={ventriCara} size={76} entra className="absolute -top-[66px] left-3" />
@@ -269,6 +287,13 @@ export default function GuidedTour() {
         <div key={`${activeTour}-${index}`} className="tour-step">
           <h3 className="text-[15px] font-bold text-slate-900 tracking-tight pr-6">{step.title}</h3>
           <p className="mt-2 text-[13px] leading-relaxed text-slate-600">{renderBody(step.body)}</p>
+          {step.waitFor && (
+            <p className={`mt-3 flex items-center gap-2 rounded-xl px-3 py-2 text-[12.5px] font-bold transition-colors ${tried ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`} role="status">
+              {tried
+                ? <><span className="tour-tried-check" aria-hidden>✓</span> ¡Muy bien! Así de fácil.</>
+                : <><span className="tour-try-dot" aria-hidden /> Te toca: hacelo vos para seguir</>}
+            </p>
+          )}
         </div>
 
         <div className="mt-4 flex gap-1" aria-hidden>
@@ -296,7 +321,7 @@ export default function GuidedTour() {
               autoFocus
               className="px-4 h-8 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold shadow-sm shadow-emerald-500/30 transition-colors active:scale-[0.97]"
             >
-              {isLast ? 'Entendido' : 'Siguiente'}
+              {isLast ? 'Entendido' : step.waitFor && !tried ? 'Saltear' : 'Siguiente'}
             </button>
           </div>
         </div>
