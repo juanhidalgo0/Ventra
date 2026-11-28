@@ -14,6 +14,7 @@ import { wsService } from './services/websocket';
 import Updater from './components/updater/Updater';
 import AdminBroadcast from './components/common/AdminBroadcast';
 import WhatsNew from './components/common/WhatsNew';
+import InitialCatalogOffer from './components/onboarding/InitialCatalogOffer';
 import YearReview from './components/yearReview/YearReview';
 import YearReviewInvite from './components/yearReview/YearReviewInvite';
 import InviteStore from './components/referral/InviteStore';
@@ -825,6 +826,7 @@ export default function App() {
     <Updater />
     <AdminBroadcast />
     <WhatsNew />
+    <InitialCatalogOffer />
     <YearReview />
     <YearReviewInvite />
     <InviteStore />

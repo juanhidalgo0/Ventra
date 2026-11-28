@@ -262,6 +262,48 @@ export class ProductsController {
     return this.productsService.saveVariantMatrix(data, req.user.sub);
   }
 
+  /** Catálogo inicial del rubro (alta del comercio): marca los que ya están cargados en esta caja */
+  @Get('initial-catalog/:rubro')
+  async initialCatalog(@Param('rubro') rubro: string) {
+    const { items } = await this.shared.initialCatalog(rubro);
+    const codes = items.map((i) => i.barcode).filter(Boolean) as string[];
+    const have = new Set((await this.productsService['prisma'].product.findMany({ where: { barcode: { in: codes } }, select: { barcode: true } })).map((p: any) => p.barcode));
+    return { items: items.map((i) => ({ ...i, exists: !!(i.barcode && have.has(i.barcode)) })) };
+  }
+
+  /** Importa una tanda del catálogo inicial: sin precio (se completa al vender) y sin control de stock */
+  @Post('initial-catalog/import')
+  async importInitialCatalog(@Body() body: any) {
+    const prisma = this.productsService['prisma'];
+    const items = (Array.isArray(body?.items) ? body.items : []).slice(0, 60);
+    const catIds = new Map<string, string>();
+    let created = 0;
+    for (const it of items) {
+      const name = String(it?.name || '').trim();
+      if (!name) continue;
+      const barcode = /^\d{8,14}$/.test(String(it?.barcode || '')) ? String(it.barcode) : null;
+      if (barcode && await prisma.product.findFirst({ where: { barcode }, select: { id: true } })) continue;
+      let categoryId: string | null = null;
+      const cat = String(it?.category || '').trim().toUpperCase();
+      if (cat) {
+        if (!catIds.has(cat)) {
+          const found = await prisma.category.findFirst({ where: { name: cat }, select: { id: true } });
+          catIds.set(cat, found?.id || (await prisma.category.create({ data: { name: cat } })).id);
+        }
+        categoryId = catIds.get(cat)!;
+      }
+      try {
+        await this.productsService.create({
+          name, barcode, categoryId, salePrice: 0, costPrice: 0, stock: 0, unlimitedStock: true,
+          unit: ['KG', 'MT', 'L'].includes(it?.unit) ? it.unit : 'UNIT',
+          imageUrl: /^https:\/\//.test(String(it?.imageUrl || '')) ? it.imageUrl : undefined,
+        });
+        created++;
+      } catch { /* uno que falla no corta la tanda */ }
+    }
+    return { created };
+  }
+
   @Get(':id')
   findById(@Param('id') id: string) {
     return this.productsService.findById(id);

@@ -2891,6 +2891,27 @@ exports.ventraBarcodes = onRequest({ maxInstances: 20, timeoutSeconds: 30, memor
   }
 });
 
+// ─── Catálogo inicial por rubro: los más vendidos de cada rubro (ver catalog-initial.js) ───
+const catalogInitial = require("./catalog-initial");
+exports.ventraInitialCatalog = onRequest({ maxInstances: 10, timeoutSeconds: 30, memory: "256MiB" }, async (req, res) => {
+  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+  const { deviceId, deviceSecret, rubro } = req.body || {};
+  const uid = await deviceTenant(deviceId, deviceSecret);
+  if (!uid) return res.status(401).json({ error: "Equipo no vinculado", code: "NOT_LINKED" });
+  try {
+    return res.status(200).json(await catalogInitial.get(db, rubro));
+  } catch (err) {
+    logger.error(`Catálogo inicial (${uid}): error`, err);
+    return res.status(500).json({ error: "No se pudo leer el catálogo inicial" });
+  }
+});
+// Se recalcula cada lunes de madrugada: entran los rubros nuevos y salen los códigos que ya no se venden
+exports.ventraInitialCatalogBuild = onSchedule({ schedule: "30 4 * * 1", timeZone: notify.TZ, secrets: [NEON_DATABASE_URL], timeoutSeconds: 300, memory: "512MiB" }, async () => {
+  const sql = cloudSync.db(String(NEON_DATABASE_URL.value() || "").trim());
+  const summary = await catalogInitial.build(sql, db);
+  logger.info("Catálogo inicial recalculado", summary);
+});
+
 // ─── Instagram de Ventra atendido solo (ver instagram.js) ───
 // Mensajes directos por webhook, comentarios y publicaciones aprobadas desde la tarea programada.
 // La conexión (token de Instagram) se hace desde ventra.store/instagram; sin conectar, nada se manda.

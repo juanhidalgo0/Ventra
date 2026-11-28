@@ -593,6 +593,19 @@ export default function POSScreen() {
 
   // Price prompt states for custom price products
   const [pricePromptProduct, setPricePromptProduct] = useState<any | null>(null);
+  /** Producto del catálogo inicial que todavía no tiene precio: se pide al venderlo y queda guardado */
+  const needsPrice = (p: any) => !!p && !p.allowCustomPrice && !p.isKit && !p.isPromo && Number(p.salePrice) === 0;
+  const confirmPromptPrice = (product: any, price: number) => {
+    addToCart(product, price);
+    if (needsPrice(product) && price > 0) {
+      api.patch(`/products/${product.id}`, { salePrice: price }).catch(() => {});
+      const st = usePOSStore.getState();
+      usePOSStore.setState({ products: st.products.map((x: any) => (x.id === product.id ? { ...x, salePrice: price } : x)) } as any);
+    }
+    setPricePromptProduct(null);
+    setTimeout(() => searchRef.current?.focus(), 50);
+    checkPromoSuggestion(product);
+  };
   const [promptPriceValue, setPromptPriceValue] = useState<string>('');
   const [showVirtualPrompt, setShowVirtualPrompt] = useState(false);
   const [virtualPromptValue, setVirtualPromptValue] = useState('');
@@ -795,7 +808,7 @@ export default function POSScreen() {
       }
     }
     const explicitQty = (customQty !== undefined && customQty !== 1) || searchQuery.includes('*');
-    if (product.allowCustomPrice) {
+    if (product.allowCustomPrice || needsPrice(product)) {
       setPricePromptProduct(product);
       setPromptPriceValue('');
       setSearchQuery('');
@@ -1096,7 +1109,7 @@ export default function POSScreen() {
             }
 
             const useProduct = (data: any) => {
-              if (data.allowCustomPrice) {
+              if (data.allowCustomPrice || needsPrice(data)) {
                 setPricePromptProduct(data);
                 setPromptPriceValue('');
               } else if (e.shiftKey || isByWeight(data)) {
@@ -1805,7 +1818,7 @@ export default function POSScreen() {
 
       // If we found a product, use it
       if (matchedProduct) {
-        if (matchedProduct.allowCustomPrice) {
+        if (matchedProduct.allowCustomPrice || needsPrice(matchedProduct)) {
           setPricePromptProduct(matchedProduct);
           setPromptPriceValue('');
           setSearchQuery('');
@@ -1823,7 +1836,7 @@ export default function POSScreen() {
 
       // 3. No está en memoria: lectura mala, alta al instante y, en paralelo, el servidor (ver lookupMissing)
       const useProduct = (finalData: any) => {
-        if (finalData.allowCustomPrice) {
+        if (finalData.allowCustomPrice || needsPrice(finalData)) {
           setPricePromptProduct(finalData);
           setPromptPriceValue('');
         } else if (shiftKey || (isByWeight(finalData) && multiplier === 1)) {
@@ -4112,14 +4125,14 @@ export default function POSScreen() {
             >
               <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">
                 <h3 className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-rose-600" /> Precio Personalizado
+                  <DollarSign className="w-5 h-5 text-rose-600" /> {needsPrice(pricePromptProduct) ? 'Precio a completar' : 'Precio Personalizado'}
                 </h3>
                 <button onClick={() => setPricePromptProduct(null)} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400"><X className="w-5 h-5" /></button>
               </div>
 
               <div className="space-y-2">
                 <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{pricePromptProduct.name}</p>
-                <p className="text-[10px] text-slate-550 dark:text-slate-400">Ingrese el precio para este producto en esta venta.</p>
+                <p className="text-[10px] text-slate-550 dark:text-slate-400">{needsPrice(pricePromptProduct) ? 'Este producto todavía no tiene precio. Lo que pongas queda guardado para las próximas ventas.' : 'Ingrese el precio para este producto en esta venta.'}</p>
               </div>
 
               <div>
@@ -4137,10 +4150,7 @@ export default function POSScreen() {
                       if (e.key === 'Enter') {
                         const price = parseFloat(promptPriceValue);
                         if (!isNaN(price) && price >= 0) {
-                          addToCart(pricePromptProduct, price);
-                          setPricePromptProduct(null);
-                          setTimeout(() => searchRef.current?.focus(), 50);
-                          checkPromoSuggestion(pricePromptProduct);
+                          confirmPromptPrice(pricePromptProduct, price);
                         }
                       }
                     }}
@@ -4155,10 +4165,7 @@ export default function POSScreen() {
                   onClick={() => {
                     const price = parseFloat(promptPriceValue);
                     if (!isNaN(price) && price >= 0) {
-                      addToCart(pricePromptProduct, price);
-                      setPricePromptProduct(null);
-                      setTimeout(() => searchRef.current?.focus(), 50);
-                      checkPromoSuggestion(pricePromptProduct);
+                      confirmPromptPrice(pricePromptProduct, price);
                     }
                   }}
                   className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-extrabold py-3.5 rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"

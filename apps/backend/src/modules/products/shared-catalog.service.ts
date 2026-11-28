@@ -21,6 +21,18 @@ export class SharedCatalogService {
 
   constructor(private subscription: SubscriptionService) {}
 
+  /** Catálogo inicial del rubro: los más vendidos de los últimos 90 días entre todos los comercios */
+  async initialCatalog(rubro: string): Promise<{ items: { barcode: string | null; name: string; category: string | null; unit: string; imageUrl: string | null; rank: number }[] }> {
+    const creds = this.subscription.getDeviceCredentials();
+    if (!creds) return { items: [] };
+    try {
+      const { data } = await axios.post(`${FUNCTIONS_URL}/ventraInitialCatalog`, { ...creds, rubro }, { timeout: 15000 });
+      return { items: Array.isArray(data?.items) ? data.items : [] };
+    } catch {
+      return { items: [] };
+    }
+  }
+
   async get(barcode: string): Promise<SharedBarcode | null> {
     const hit = this.cache.get(barcode);
     if (hit && Date.now() - hit.at < TTL_MS) return hit.value;
